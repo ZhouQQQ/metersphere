@@ -1,6 +1,7 @@
 package io.metersphere.ldap.controller;
 
 import io.metersphere.base.domain.User;
+import io.metersphere.commons.constants.OperLogConstants;
 import io.metersphere.commons.constants.ParamConstants;
 import io.metersphere.commons.constants.UserSource;
 import io.metersphere.commons.exception.MSException;
@@ -8,6 +9,7 @@ import io.metersphere.controller.ResultHolder;
 import io.metersphere.controller.request.LoginRequest;
 import io.metersphere.i18n.Translator;
 import io.metersphere.ldap.service.LdapService;
+import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.service.SystemParameterService;
 import io.metersphere.service.UserService;
 import org.apache.commons.lang3.StringUtils;
@@ -29,6 +31,7 @@ public class LdapController {
     private SystemParameterService systemParameterService;
 
     @PostMapping(value = "/signin")
+    @MsAuditLog(module = "system_parameter_setting", type = OperLogConstants.LOGIN, title = "LDAP")
     public ResultHolder login(@RequestBody LoginRequest request) {
 
         String isOpen = systemParameterService.getValue(ParamConstants.LDAP.OPEN.getValue());
@@ -50,11 +53,13 @@ public class LdapController {
 
         // userId 或 email 有一个相同即为存在本地用户
         User u = userService.selectUser(userId, email);
+        String name = ldapService.getMappingAttr("name", dirContext);
+        String phone = ldapService.getNotRequiredMappingAttr("phone", dirContext);
         if (u == null) {
 
             // 新建用户 获取LDAP映射属性
-            String name = ldapService.getMappingAttr("name", dirContext);
-            String phone = ldapService.getNotRequiredMappingAttr("phone", dirContext);
+//            String name = ldapService.getMappingAttr("name", dirContext);
+//            String phone = ldapService.getNotRequiredMappingAttr("phone", dirContext);
 
             User user = new User();
             user.setId(userId);
@@ -67,9 +72,15 @@ public class LdapController {
 
             user.setSource(UserSource.LDAP.name());
             userService.addLdapUser(user);
+        } else {
+            // 更新
+            u.setName(name);
+            u.setPhone(phone);
+            u.setEmail(email);
+            userService.updateUser(u);
         }
 
-        // 执行 ShiroDBRealm 中 LDAP 登录逻辑
+        // 执行 LocalRealm 中 LDAP 登录逻辑
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setUsername(userId);
         return userService.login(loginRequest);
@@ -81,6 +92,7 @@ public class LdapController {
     }
 
     @PostMapping("/test/login")
+    @MsAuditLog(module = "system_parameter_setting", type = OperLogConstants.LOGIN, title = "LDAP")
     public void testLogin(@RequestBody LoginRequest request) {
         ldapService.authenticate(request);
     }

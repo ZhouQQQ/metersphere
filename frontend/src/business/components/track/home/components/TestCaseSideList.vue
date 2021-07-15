@@ -8,7 +8,7 @@
       class="adjust-table"
       @row-click="editTestCase"
       :data="tableData"
-      v-loading="result.loading">
+      v-loading="result.loading" height="300px">
 
       <el-table-column
         prop="name"
@@ -61,6 +61,7 @@
   import StatusTableItem from "../../common/tableItems/planview/StatusTableItem";
   import TypeTableItem from "../../common/tableItems/planview/TypeTableItem";
   import PriorityTableItem from "../../common/tableItems/planview/PriorityTableItem";
+  import {getCurrentProjectID} from "../../../../../common/js/utils";
   export default {
     name: "TestCaseSideList",
     components: {PriorityTableItem, TypeTableItem, StatusTableItem, HomeBaseComponent},
@@ -80,12 +81,15 @@
     },
     methods: {
       initTableData() {
+        if (!getCurrentProjectID()) {
+          return;
+        }
         this.result = this.$post('/test/plan/case/recent/10', {}, response => {
           this.tableData = response.data;
         });
       },
       editTestCase(row, event, column) {
-        this.$router.push('/track/plan/view/edit/' + row.caseId)
+        this.$router.push('/track/plan/view/edit/' + row.id)
       }
     }
   }

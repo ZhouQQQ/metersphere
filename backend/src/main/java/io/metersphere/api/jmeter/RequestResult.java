@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 public class RequestResult {
+    // 请求ID
+    private String id;
 
     private String name;
 
@@ -14,7 +16,13 @@ public class RequestResult {
 
     private String method;
 
+    private String scenario;
+
     private long requestSize;
+
+    private long startTime;
+
+    private long endTime;
 
     private int error;
 

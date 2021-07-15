@@ -185,7 +185,7 @@ export class TestPlan extends DefaultTestElement {
 
     props = props || {};
     this.boolProp("TestPlan.functional_mode", props.mode, false);
-    this.boolProp("TestPlan.serialize_threadgroups", props.stg, false);
+    this.boolProp("TestPlan.serialize_threadgroups", props.stg, true);
     this.boolProp("TestPlan.tearDown_on_shutdown", props.tos, true);
     this.stringProp("TestPlan.comments", props.comments);
     this.stringProp("TestPlan.user_define_classpath", props.classpath);
@@ -274,6 +274,43 @@ export class DubboSample extends DefaultTestElement {
   }
 }
 
+export class JDBCSampler extends DefaultTestElement {
+  constructor(testName, request = {}) {
+    super('JDBCSampler', 'TestBeanGUI', 'JDBCSampler', testName);
+
+    this.stringProp("dataSource", request.dataSource);
+    this.stringProp("query", request.query);
+    this.stringProp("queryTimeout", request.queryTimeout);
+    this.stringProp("resultVariable", request.resultVariable);
+    this.stringProp("variableNames", request.variableNames);
+    this.stringProp("queryArguments");
+    this.stringProp("queryArgumentsTypes");
+    this.stringProp("resultSetMaxRows");
+    this.stringProp("resultSetHandler", 'Store as String');
+    this.stringProp("queryType", 'Callable Statement');
+  }
+}
+
+export class TCPSampler extends DefaultTestElement {
+  constructor(testName, request = {}) {
+    super('TCPSampler', 'TCPSamplerGui', 'TCPSampler', testName);
+
+    this.stringProp("TCPSampler.classname", request.classname);
+    this.stringProp("TCPSampler.server", request.server);
+    this.stringProp("TCPSampler.port", request.port);
+    this.stringProp("TCPSampler.ctimeout", request.ctimeout);
+    this.stringProp("TCPSampler.timeout", request.timeout);
+    this.boolProp("TCPSampler.reUseConnection", request.reUseConnection);
+    this.boolProp("TCPSampler.nodelay", request.nodelay);
+    this.boolProp("TCPSampler.closeConnection", request.closeConnection);
+    this.stringProp("TCPSampler.soLinger", request.soLinger);
+    this.stringProp("TCPSampler.EolByte", request.eolByte);
+    this.stringProp("TCPSampler.request", request.request);
+    this.stringProp("ConfigTestElement.username", request.username);
+    this.stringProp("ConfigTestElement.password", request.password);
+  }
+}
+
 export class HTTPSamplerProxy extends DefaultTestElement {
   constructor(testName, options = {}) {
     super('HTTPSamplerProxy', 'HttpTestSampleGui', 'HTTPSamplerProxy', testName);
@@ -289,9 +326,18 @@ export class HTTPSamplerProxy extends DefaultTestElement {
     } else {
       this.stringProp("HTTPSampler.port", options.port);
     }
+    if (options.connectTimeout) {
+      this.stringProp('HTTPSampler.connect_timeout', options.connectTimeout);
+    }
+    if (options.responseTimeout) {
+      this.stringProp('HTTPSampler.response_timeout', options.responseTimeout);
+    }
+    if (options.followRedirects) {
+      this.boolProp('HTTPSampler.follow_redirects', options.followRedirects, true);
+    }
 
-    this.boolProp("HTTPSampler.follow_redirects", options.follow, true);
     this.boolProp("HTTPSampler.use_keepalive", options.keepalive, true);
+    this.boolProp("HTTPSampler.DO_MULTIPART_POST", options.doMultipartPost, false);
   }
 }
 
@@ -310,14 +356,38 @@ export class HTTPSamplerArguments extends Element {
 
     let collectionProp = this.collectionProp('Arguments.arguments');
     this.args.forEach(arg => {
-      let elementProp = collectionProp.elementProp(arg.name, 'HTTPArgument');
-      elementProp.boolProp('HTTPArgument.always_encode', arg.encode, true);
-      elementProp.boolProp('HTTPArgument.use_equals', arg.equals, true);
-      if (arg.name) {
-        elementProp.stringProp('Argument.name', arg.name);
+      if (arg.enable === true || arg.enable === undefined) { // 非禁用的条件加入执行
+        let elementProp = collectionProp.elementProp(arg.name, 'HTTPArgument');
+        elementProp.boolProp('HTTPArgument.always_encode', arg.encode, true);
+        elementProp.boolProp('HTTPArgument.use_equals', arg.equals, true);
+        if (arg.name) {
+          elementProp.stringProp('Argument.name', arg.name);
+        }
+        elementProp.stringProp('Argument.value', arg.value);
+        elementProp.stringProp('Argument.metadata', arg.metadata || "=");
+        if (arg.contentType) {
+          elementProp.stringProp('HTTPArgument.content_type', arg.contentType, "");
+        }
       }
-      elementProp.stringProp('Argument.value', arg.value);
-      elementProp.stringProp('Argument.metadata', arg.metadata || "=");
+    });
+  }
+}
+
+export class HTTPsamplerFiles extends Element {
+  constructor(args) {
+    super('elementProp', {
+      name: "HTTPsampler.Files",
+      elementType: "HTTPFileArgs",
+    });
+
+    this.args = args || {};
+
+    let collectionProp = this.collectionProp('HTTPFileArgs.files');
+    this.args.forEach(arg => {
+      let elementProp = collectionProp.elementProp(arg.value, 'HTTPFileArg');
+      elementProp.stringProp('File.path', arg.value);
+      elementProp.stringProp('File.paramname', arg.name);
+      elementProp.stringProp('File.mimetype', arg.contentType || "application/octet-stream");
     });
   }
 }
@@ -345,7 +415,7 @@ export class ResponseAssertion extends DefaultTestElement {
     this.assertion = assertion || {};
 
     this.stringProp('Assertion.test_field', this.assertion.field);
-    this.boolProp('Assertion.assume_success', false);
+    this.boolProp('Assertion.assume_success', this.assertion.assumeSuccess);
     this.intProp('Assertion.test_type', this.assertion.type);
     this.stringProp('Assertion.custom_message', this.assertion.message);
 
@@ -369,12 +439,23 @@ export class JSONPathAssertion extends DefaultTestElement {
   }
 }
 
+export class XPath2Assertion extends DefaultTestElement {
+  constructor(testName, xPath) {
+    super('XPath2Assertion', 'XPath2AssertionGui', 'XPath2Assertion', testName);
+    this.xPath = xPath || {};
+    this.stringProp('XPath.xpath', this.xPath.expression);
+    this.stringProp('XPath.namespace');
+    this.boolProp('XPath.negate', false);
+  }
+}
+
 export class ResponseCodeAssertion extends ResponseAssertion {
-  constructor(testName, type, value, message) {
+  constructor(testName, type, value, assumeSuccess, message) {
     let assertion = {
       field: 'Assertion.response_code',
       type: type,
       value: value,
+      assumeSuccess: assumeSuccess,
       message: message,
     }
     super(testName, assertion)
@@ -382,11 +463,12 @@ export class ResponseCodeAssertion extends ResponseAssertion {
 }
 
 export class ResponseDataAssertion extends ResponseAssertion {
-  constructor(testName, type, value, message) {
+  constructor(testName, type, value, assumeSuccess, message) {
     let assertion = {
       field: 'Assertion.response_data',
       type: type,
       value: value,
+      assumeSuccess: assumeSuccess,
       message: message,
     }
     super(testName, assertion)
@@ -394,14 +476,96 @@ export class ResponseDataAssertion extends ResponseAssertion {
 }
 
 export class ResponseHeadersAssertion extends ResponseAssertion {
-  constructor(testName, type, value, message) {
+  constructor(testName, type, value, assumeSuccess, message) {
     let assertion = {
       field: 'Assertion.response_headers',
       type: type,
       value: value,
+      assumeSuccess: assumeSuccess,
       message: message,
     }
     super(testName, assertion)
+  }
+}
+
+export class BeanShellProcessor extends DefaultTestElement {
+  constructor(tag, guiclass, testclass, testname, processor) {
+    super(tag, guiclass, testclass, testname);
+    this.processor = processor || {};
+    this.boolProp('resetInterpreter', false);
+    this.stringProp('parameters');
+    this.stringProp('filename');
+    this.stringProp('script', processor.script);
+  }
+}
+
+export class JSR223Processor extends DefaultTestElement {
+  constructor(tag, guiclass, testclass, testname, processor) {
+    super(tag, guiclass, testclass, testname);
+    this.processor = processor || {};
+    this.stringProp('cacheKey', 'true');
+    this.stringProp('filename');
+    this.stringProp('parameters');
+    this.stringProp('script', this.processor.script);
+    this.stringProp('scriptLanguage', this.processor.language);
+  }
+}
+
+export class JSR223Assertion extends JSR223Processor {
+  constructor(testName, processor) {
+    super('JSR223Assertion', 'TestBeanGUI', 'JSR223Assertion', testName, processor)
+  }
+}
+
+export class JSR223PreProcessor extends JSR223Processor {
+  constructor(testName, processor) {
+    super('JSR223PreProcessor', 'TestBeanGUI', 'JSR223PreProcessor', testName, processor)
+  }
+}
+
+export class JSR223PostProcessor extends JSR223Processor {
+  constructor(testName, processor) {
+    super('JSR223PostProcessor', 'TestBeanGUI', 'JSR223PostProcessor', testName, processor)
+  }
+}
+
+export class BeanShellPreProcessor extends BeanShellProcessor {
+  constructor(testName, processor) {
+    super('BeanShellPreProcessor', 'TestBeanGUI', 'BeanShellPreProcessor', testName, processor)
+  }
+}
+
+export class BeanShellPostProcessor extends BeanShellProcessor {
+  constructor(testName, processor) {
+    super('BeanShellPostProcessor', 'TestBeanGUI', 'BeanShellPostProcessor', testName, processor)
+  }
+}
+
+export class IfController extends DefaultTestElement {
+  constructor(testName, controller = {}) {
+    super('IfController', 'IfControllerPanel', 'IfController', testName);
+
+    this.stringProp('IfController.comments', controller.comments);
+    this.stringProp('IfController.condition', controller.condition);
+    this.boolProp('IfController.evaluateAll', controller.evaluateAll, false);
+    this.boolProp('IfController.useExpression', controller.useExpression, true);
+  }
+}
+
+export class TransactionController extends DefaultTestElement {
+  constructor(testName, controller = {}) {
+    super('TransactionController', 'TransactionControllerPanel', 'TransactionController', testName);
+
+    this.stringProp('TransactionController.comments', controller.comments);
+    this.boolProp('TransactionController.parent', controller.parent, true);
+  }
+}
+
+export class ConstantTimer extends DefaultTestElement {
+  constructor(testName, timer = {}) {
+    super('ConstantTimer', 'ConstantTimerGui', 'ConstantTimer', testName);
+
+    this.stringProp('ConstantTimer.delay', timer.delay);
   }
 }
 
@@ -412,10 +576,51 @@ export class HeaderManager extends DefaultTestElement {
 
     let collectionProp = this.collectionProp('HeaderManager.headers');
     this.headers.forEach(header => {
-      let elementProp = collectionProp.elementProp('', 'Header');
-      elementProp.stringProp('Header.name', header.name);
-      elementProp.stringProp('Header.value', header.value);
+      if (header.enable === true || header.enable === undefined) {
+        let elementProp = collectionProp.elementProp('', 'Header');
+        elementProp.stringProp('Header.name', header.name);
+        elementProp.stringProp('Header.value', header.value);
+      }
     });
+  }
+}
+
+export class DNSCacheManager extends DefaultTestElement {
+  constructor(testName, hosts) {
+    super('DNSCacheManager', 'DNSCachePanel', 'DNSCacheManager', testName);
+    let collectionPropServers = this.collectionProp('DNSCacheManager.servers');
+    let collectionPropHosts = this.collectionProp('DNSCacheManager.hosts');
+
+    hosts.forEach(host => {
+      let elementProp = collectionPropHosts.elementProp(host.domain, 'StaticHost');
+      elementProp.stringProp('StaticHost.Name', host.domain);
+      elementProp.stringProp('StaticHost.Address', host.ip);
+    });
+
+    let boolProp = this.boolProp('DNSCacheManager.isCustomResolver', true);
+  }
+}
+
+export class JDBCDataSource extends DefaultTestElement {
+  constructor(testName, datasource) {
+    super('JDBCDataSource', 'TestBeanGUI', 'JDBCDataSource', testName);
+
+    this.boolProp('autocommit', true);
+    this.boolProp('keepAlive', true);
+    this.boolProp('preinit', false);
+    this.stringProp('dataSource', datasource.name);
+    this.stringProp('dbUrl', datasource.dbUrl);
+    this.stringProp('driver', datasource.driver);
+    this.stringProp('username', datasource.username);
+    this.stringProp('password', datasource.password);
+    this.stringProp('poolMax', datasource.poolMax);
+    this.stringProp('timeout', datasource.timeout);
+    this.stringProp('connectionAge', '5000');
+    this.stringProp('trimInterval', '60000');
+    this.stringProp('transactionIsolation', 'DEFAULT');
+    this.stringProp('checkQuery');
+    this.stringProp('initQuery');
+    this.stringProp('connectionProperties');
   }
 }
 
@@ -425,12 +630,15 @@ export class Arguments extends DefaultTestElement {
     this.args = args || [];
 
     let collectionProp = this.collectionProp('Arguments.arguments');
+
     this.args.forEach(arg => {
-      let elementProp = collectionProp.elementProp(arg.name, 'Argument');
-      elementProp.stringProp('Argument.name', arg.name);
-      elementProp.stringProp('Argument.value', arg.value);
-      elementProp.stringProp('Argument.desc', arg.desc);
-      elementProp.stringProp('Argument.metadata', arg.metadata, "=");
+      if (arg.enable === true || arg.enable === undefined) { // 非禁用的条件加入执行
+        let elementProp = collectionProp.elementProp(arg.name, 'Argument');
+        elementProp.stringProp('Argument.name', arg.name);
+        elementProp.stringProp('Argument.value', arg.value);
+        elementProp.stringProp('Argument.desc', arg.desc);
+        elementProp.stringProp('Argument.metadata', arg.metadata, "=");
+      }
     });
   }
 }
@@ -449,10 +657,12 @@ export class ElementArguments extends Element {
     let collectionProp = this.collectionProp('Arguments.arguments');
     if (args) {
       args.forEach(arg => {
-        let elementProp = collectionProp.elementProp(arg.name, 'Argument');
-        elementProp.stringProp('Argument.name', arg.name);
-        elementProp.stringProp('Argument.value', arg.value);
-        elementProp.stringProp('Argument.metadata', arg.metadata, "=");
+        if (arg.enable === true || arg.enable === undefined) { // 非禁用的条件加入执行
+          let elementProp = collectionProp.elementProp(arg.name, 'Argument');
+          elementProp.stringProp('Argument.name', arg.name);
+          elementProp.stringProp('Argument.value', arg.value);
+          elementProp.stringProp('Argument.metadata', arg.metadata, "=");
+        }
       });
     }
   }

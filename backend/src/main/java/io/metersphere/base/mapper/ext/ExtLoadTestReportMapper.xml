@@ -65,15 +65,16 @@
     </sql>
 
     <select id="getReportList" resultType="io.metersphere.dto.ReportDTO">
-        select ltr.id, ltr.name, ltr.test_id as testId, ltr.description, user.name as userName, project.name as
+        select ltr.id, ltr.name, ltr.test_id as testId, ltr.max_users maxUsers, ltr.avg_response_time avgResponseTime,
+        ltr.tps, ltr.test_start_time as testStartTime, ltr.test_end_time as testEndTime, ltr.test_duration as testDuration,
+        ltr.description, user.name as userName, project.name as
         projectName, ltr.trigger_mode,
-        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, lt.name as testName
+        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, ltr.test_name as testName,
+        project.id as projectId
         from load_test_report ltr
-        join load_test lt on ltr.test_id = lt.id
+        left join load_test lt on ltr.test_id = lt.id
         join user on ltr.user_id = user.id
-        <if test="reportRequest.workspaceId != null">
-            JOIN project on project.id = lt.project_id
-        </if>
+        join project on project.id = ltr.project_id
         <where>
             <if test="reportRequest.combine != null">
                 <include refid="combine">
@@ -84,8 +85,17 @@
             <if test="reportRequest.name != null">
                 AND ltr.name like CONCAT('%', #{reportRequest.name},'%')
             </if>
+            <if test="reportRequest.userId != null">
+                AND ltr.user_id = #{reportRequest.userId,jdbcType=VARCHAR}
+            </if>
             <if test="reportRequest.workspaceId != null">
                 AND workspace_id = #{reportRequest.workspaceId,jdbcType=VARCHAR}
+            </if>
+            <if test="reportRequest.projectId != null">
+                AND project.id = #{reportRequest.projectId,jdbcType=VARCHAR}
+            </if>
+            <if test="reportRequest.testId != null">
+                AND ltr.test_id = #{reportRequest.testId,jdbcType=VARCHAR}
             </if>
             <if test="reportRequest.filters != null and reportRequest.filters.size() > 0">
                 <foreach collection="reportRequest.filters.entrySet()" index="key" item="values">
@@ -93,6 +103,12 @@
                         <choose>
                             <when test="key=='status'">
                                 and ltr.status in
+                                <foreach collection="values" item="value" separator="," open="(" close=")">
+                                    #{value}
+                                </foreach>
+                            </when>
+                            <when test="key=='project_id'">
+                                and ltr.project_id in
                                 <foreach collection="values" item="value" separator="," open="(" close=")">
                                     #{value}
                                 </foreach>
@@ -119,14 +135,14 @@
 
     <select id="getReportTestAndProInfo" resultType="io.metersphere.dto.ReportDTO">
         select ltr.id, ltr.name, ltr.test_id as testId, ltr.description,
-        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, lt.name as testName,
+        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, ltr.test_name as testName,
         p.id as projectId, p.name as projectName
-        from load_test_report ltr join load_test lt on ltr.test_id = lt.id join project p on lt.project_id = p.id
+        from load_test_report ltr left join load_test lt on ltr.test_id = lt.id join project p on ltr.project_id = p.id
         where ltr.id = #{id}
     </select>
 
     <select id="selectDashboardTests" resultType="io.metersphere.dto.DashboardTestDTO">
-        SELECT create_time AS date, count(load_test_report.id) AS count,
+        SELECT min(create_time) AS date, count(load_test_report.id) AS count,
         date_format(from_unixtime(create_time / 1000), '%Y-%m-%d') AS x
         FROM load_test_report
         WHERE test_id IN (SELECT load_test.id
@@ -143,5 +159,11 @@
         WHERE report_id = #{reportId}
         GROUP BY resource_id
     </select>
+
+    <update id="updateJmxContentIfAbsent">
+        update load_test_report
+        set jmx_content = #{jmxContent,jdbcType=VARCHAR}
+        WHERE id = #{id,jdbcType=VARCHAR} and jmx_content is null
+    </update>
 
 </mapper>

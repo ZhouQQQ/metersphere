@@ -1,30 +1,35 @@
 package io.metersphere.track.request.testcase;
 
-import io.metersphere.base.domain.TestCase;
-import io.metersphere.controller.request.OrderRequest;
+import io.metersphere.controller.request.BaseQueryRequest;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @Setter
-public class QueryTestCaseRequest extends TestCase {
+public class QueryTestCaseRequest extends BaseQueryRequest {
 
     private String name;
 
-    private List<String> nodeIds;
-
     private List<String> testCaseIds;
-
-    private List<OrderRequest> orders;
-
-    private Map<String, List<String>> filters;
 
     private String planId;
 
-    private String workspaceId;
+    private String issuesId;
 
-    private Map<String, Object> combine;
+    private String userId;
+
+    private String reviewId;
+
+    private boolean isSelectThisWeedData = false;
+    private boolean isSelectThisWeedRelevanceData = false;
+
+    private String caseCoverage;
+
+    private String nodeId;
+
+    private long createTime = 0;
+    private long relevanceCreateTime = 0;
+    private List<String> testCaseContainIds;
 }

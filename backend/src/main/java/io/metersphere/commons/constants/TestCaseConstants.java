@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 
 public class TestCaseConstants {
 
-    public static final int MAX_NODE_DEPTH = 5;
+    public static final int MAX_NODE_DEPTH = 8;
 
     public enum Type {
         Functional("functional"), Performance("performance"), Aapi("api");
@@ -44,5 +44,9 @@ public class TestCaseConstants {
             List<Method> types = Arrays.asList(Method.values());
             return  types.stream().map(Method::getValue).collect(Collectors.toList());
         }
+    }
+
+    public enum StepModel {
+        TEXT, STEP
     }
 }

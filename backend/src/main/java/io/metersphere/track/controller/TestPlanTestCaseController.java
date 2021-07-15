@@ -3,15 +3,15 @@ package io.metersphere.track.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.base.domain.TestPlanTestCaseWithBLOBs;
-import io.metersphere.commons.constants.RoleConstants;
+import io.metersphere.commons.constants.OperLogConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
+import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.track.dto.TestPlanCaseDTO;
 import io.metersphere.track.request.testcase.TestPlanCaseBatchRequest;
 import io.metersphere.track.request.testplancase.QueryTestPlanCaseRequest;
+import io.metersphere.track.request.testplancase.TestPlanFuncCaseBatchRequest;
 import io.metersphere.track.service.TestPlanTestCaseService;
-import org.apache.shiro.authz.annotation.Logical;
-import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -31,12 +31,18 @@ public class TestPlanTestCaseController {
         return PageUtils.setPageInfo(page, testPlanTestCaseService.list(request));
     }
 
+    /*jenkins测试计划下全部用例*/
     @GetMapping("/list/{planId}")
     public List<TestPlanCaseDTO> getTestPlanCaseByPlanId(@PathVariable String planId) {
         QueryTestPlanCaseRequest request = new QueryTestPlanCaseRequest();
         request.setPlanId(planId);
         request.setMethod("auto");
-        return testPlanTestCaseService.list(request);
+        return testPlanTestCaseService.listByPlanId(request);
+    }
+
+    @PostMapping("/list/minder")
+    public List<TestPlanCaseDTO> listForMinder(@RequestBody QueryTestPlanCaseRequest request) {
+        return testPlanTestCaseService.listForMinder(request);
     }
 
     @GetMapping("/list/node/{planId}/{nodePaths}")
@@ -83,26 +89,43 @@ public class TestPlanTestCaseController {
         return testPlanTestCaseService.list(request);
     }
 
+    @PostMapping("/idList/all")
+    public List<String> getTestPlanCases(@RequestBody TestPlanFuncCaseBatchRequest request) {
+        return testPlanTestCaseService.idList(request);
+    }
+
+
+    @PostMapping("/list/ids")
+    public List<TestPlanCaseDTO> getTestPlanCaseIds(@RequestBody QueryTestPlanCaseRequest request) {
+        return testPlanTestCaseService.list(request);
+    }
+
     @PostMapping("/edit")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = "track_test_case_review", type = OperLogConstants.UPDATE, content = "#msClass.getLogDetails(#testPlanTestCase.id)", msClass = TestPlanTestCaseService.class)
     public void editTestCase(@RequestBody TestPlanTestCaseWithBLOBs testPlanTestCase) {
         testPlanTestCaseService.editTestCase(testPlanTestCase);
     }
 
+    @PostMapping("/minder/edit")
+    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getCaseLogDetails(#testPlanTestCases)", msClass = TestPlanTestCaseService.class)
+    public void editTestCaseForMinder(@RequestBody List<TestPlanTestCaseWithBLOBs> testPlanTestCases) {
+        testPlanTestCaseService.editTestCaseForMinder(testPlanTestCases);
+    }
+
     @PostMapping("/batch/edit")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
     public void editTestCaseBath(@RequestBody TestPlanCaseBatchRequest request) {
         testPlanTestCaseService.editTestCaseBath(request);
     }
 
     @PostMapping("/batch/delete")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
     public void deleteTestCaseBath(@RequestBody TestPlanCaseBatchRequest request) {
         testPlanTestCaseService.deleteTestCaseBath(request);
     }
 
     @PostMapping("/delete/{id}")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = TestPlanTestCaseService.class)
     public int deleteTestCase(@PathVariable String id) {
         return testPlanTestCaseService.deleteTestCase(id);
     }

@@ -8,11 +8,16 @@
       </el-col>
       <el-col>
         <ms-api-variable-input :is-read-only="isReadOnly" v-model="common.variable" size="small" maxlength="60"
-                               @change="change" show-word-limit :placeholder="$t('api_test.variable_name')"/>
+                               @change="change" :show-copy-tip-with-multiple="common.multipleMatching" show-word-limit :placeholder="$t('api_test.variable_name')"/>
       </el-col>
       <el-col>
         <el-input :disabled="isReadOnly" v-model="common.expression" size="small" show-word-limit
                   :placeholder="expression"/>
+      </el-col>
+      <el-col class="multiple_checkbox">
+        <el-checkbox v-model="common.multipleMatching" :disabled="isReadOnly">
+          {{ $t('api_test.request.extract.multiple_matching') }}
+        </el-checkbox>
       </el-col>
       <el-col class="extract-btn">
         <el-button :disabled="isReadOnly" type="danger" size="mini" icon="el-icon-delete" circle @click="remove"
@@ -74,6 +79,7 @@
 
     methods: {
       add() {
+        this.common.type = this.extractType;
         this.list.push(new ExtractCommon(this.extractType, this.common));
         this.clear();
         this.callback();
@@ -158,4 +164,10 @@
   .extract-btn {
     width: 60px;
   }
+
+  .multiple_checkbox {
+    text-align: center;
+    width: 120px;
+  }
+
 </style>

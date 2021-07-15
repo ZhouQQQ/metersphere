@@ -30,7 +30,7 @@
 
     data() {
       return {
-        isActive: false,
+        isActive: true,
         activeName: "body",
       }
     },
@@ -62,7 +62,7 @@
 
   .text-container .pane {
     background-color: #F9F9F9;
-    padding: 10px;
+  padding: 1px 0;
     height: 250px;
     overflow-y: auto;
   }

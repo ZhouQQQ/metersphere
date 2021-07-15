@@ -1,48 +1,56 @@
 package io.metersphere.api.service;
 
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.nacos.client.utils.StringUtils;
 import io.github.ningyu.jmeter.plugin.dubbo.sample.ProviderService;
 import io.metersphere.api.dto.*;
 import io.metersphere.api.dto.parse.ApiImport;
 import io.metersphere.api.dto.scenario.request.dubbo.RegistryCenter;
 import io.metersphere.api.jmeter.JMeterService;
-import io.metersphere.api.parse.ApiImportParser;
-import io.metersphere.api.parse.ApiImportParserFactory;
+import io.metersphere.api.parse.old.ApiImportParser;
+import io.metersphere.api.parse.old.ApiImportParserFactory;
+import io.metersphere.api.parse.old.JmeterDocumentParser;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.ApiTestFileMapper;
 import io.metersphere.base.mapper.ApiTestMapper;
 import io.metersphere.base.mapper.ext.ExtApiTestMapper;
-import io.metersphere.commons.constants.*;
+import io.metersphere.commons.constants.APITestStatus;
+import io.metersphere.commons.constants.FileType;
+import io.metersphere.commons.constants.ScheduleGroup;
+import io.metersphere.commons.constants.ScheduleType;
 import io.metersphere.commons.exception.MSException;
-import io.metersphere.commons.utils.BeanUtils;
-import io.metersphere.commons.utils.LogUtil;
-import io.metersphere.commons.utils.ServiceUtils;
-import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.commons.utils.*;
 import io.metersphere.controller.request.QueryScheduleRequest;
+import io.metersphere.controller.request.ScheduleRequest;
 import io.metersphere.dto.ScheduleDao;
 import io.metersphere.i18n.Translator;
 import io.metersphere.job.sechedule.ApiTestJob;
 import io.metersphere.service.FileService;
+import io.metersphere.service.QuotaService;
 import io.metersphere.service.ScheduleService;
+import io.metersphere.service.UserService;
 import io.metersphere.track.service.TestCaseService;
 import org.apache.dubbo.common.URL;
 import org.apache.dubbo.common.constants.CommonConstants;
+import org.aspectj.util.FileUtil;
+import org.dom4j.Document;
+import org.dom4j.DocumentHelper;
+import org.dom4j.Element;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class APITestService {
-
+    @Resource
+    private UserService userService;
     @Resource
     private ApiTestMapper apiTestMapper;
     @Resource
@@ -60,6 +68,8 @@ public class APITestService {
     @Resource
     private TestCaseService testCaseService;
 
+    private static final String BODY_FILE_DIR = "/opt/metersphere/data/body";
+
     public List<APITestResult> list(QueryAPITestRequest request) {
         request.setOrders(ServiceUtils.getDefaultOrder(request.getOrders()));
         return extApiTestMapper.list(request);
@@ -70,29 +80,69 @@ public class APITestService {
         return extApiTestMapper.list(request);
     }
 
-    public void create(SaveAPITestRequest request, MultipartFile file) {
+    public List<ApiTest> listByIds(QueryAPITestRequest request) {
+        return extApiTestMapper.listByIds(request.getIds());
+    }
+
+    public void create(SaveAPITestRequest request, MultipartFile file, List<MultipartFile> bodyFiles) {
+        List<String> bodyUploadIds = new ArrayList<>(request.getBodyUploadIds());
+        ApiTest test = createTest(request, file);
+        createBodyFiles(test, bodyUploadIds, bodyFiles);
+    }
+
+    private ApiTest createTest(SaveAPITestRequest request, MultipartFile file) {
         if (file == null) {
             throw new IllegalArgumentException(Translator.get("file_cannot_be_null"));
         }
+        checkQuota();
+        request.setBodyUploadIds(null);
         ApiTest test = createTest(request);
-        saveFile(test.getId(), file);
+        saveFile(test, file);
+        return test;
     }
 
-    public void update(SaveAPITestRequest request, MultipartFile file) {
+    public void update(SaveAPITestRequest request, MultipartFile file, List<MultipartFile> bodyFiles) {
         if (file == null) {
             throw new IllegalArgumentException(Translator.get("file_cannot_be_null"));
         }
         deleteFileByTestId(request.getId());
+
+        List<String> bodyUploadIds = new ArrayList<>(request.getBodyUploadIds());
+        request.setBodyUploadIds(null);
         ApiTest test = updateTest(request);
-        saveFile(test.getId(), file);
+        createBodyFiles(test, bodyUploadIds, bodyFiles);
+        saveFile(test, file);
+    }
+
+    private void createBodyFiles(ApiTest test, List<String> bodyUploadIds, List<MultipartFile> bodyFiles) {
+        if (bodyUploadIds.size() <= 0) {
+            return;
+        }
+        String dir = BODY_FILE_DIR + "/" + test.getId();
+        File testDir = new File(dir);
+        if (!testDir.exists()) {
+            testDir.mkdirs();
+        }
+        for (int i = 0; i < bodyUploadIds.size(); i++) {
+            MultipartFile item = bodyFiles.get(i);
+            File file = new File(testDir + "/" + bodyUploadIds.get(i) + "_" + item.getOriginalFilename());
+            try (InputStream in = item.getInputStream(); OutputStream out = new FileOutputStream(file)) {
+                file.createNewFile();
+                FileUtil.copyStream(in, out);
+            } catch (IOException e) {
+                LogUtil.error(e.getMessage(), e);
+                MSException.throwException(Translator.get("upload_fail"));
+            }
+        }
     }
 
     public void copy(SaveAPITestRequest request) {
-        request.setName(request.getName() + " Copy");
-        try {
-            checkNameExist(request);
-        } catch (Exception e) {
-            request.setName(request.getName() + " " + new Random().nextInt(1000));
+        checkQuota();
+
+        ApiTestExample example = new ApiTestExample();
+        example.createCriteria().andNameEqualTo(request.getName()).andProjectIdEqualTo(request.getProjectId());
+        if (apiTestMapper.countByExample(example) > 0) {
+            MSException.throwException(Translator.get("load_test_already_exists"));
         }
 
         // copy test
@@ -111,6 +161,21 @@ public class APITestService {
             apiTestFile.setTestId(copy.getId());
             apiTestFile.setFileId(fileMetadata.getId());
             apiTestFileMapper.insert(apiTestFile);
+        }
+        copyBodyFiles(copy.getId(), request.getId());
+    }
+
+    public void copyBodyFiles(String target, String source) {
+        String sourceDir = BODY_FILE_DIR + "/" + source;
+        String targetDir = BODY_FILE_DIR + "/" + target;
+        File sourceFile = new File(sourceDir);
+        if (sourceFile.exists()) {
+            try {
+                FileUtil.copyDir(sourceFile, new File(targetDir));
+            } catch (IOException e) {
+                LogUtil.error(e.getMessage(), e);
+                MSException.throwException(Translator.get("upload_fail"));
+            }
         }
     }
 
@@ -131,12 +196,24 @@ public class APITestService {
         return extApiTestMapper.getApiTestByProjectId(projectId);
     }
 
-    public void delete(String testId) {
-        testCaseService.checkIsRelateTest(testId);
+    public void delete(DeleteAPITestRequest request) {
+        String testId = request.getId();
+        if (!request.isForceDelete()) {
+            testCaseService.checkIsRelateTest(testId);
+        }
         deleteFileByTestId(testId);
         apiReportService.deleteByTestId(testId);
-        scheduleService.deleteByResourceId(testId);
+        scheduleService.deleteByResourceId(testId, ScheduleGroup.API_TEST.name());
         apiTestMapper.deleteByPrimaryKey(testId);
+        deleteBodyFiles(testId);
+    }
+
+    public void deleteBodyFiles(String testId) {
+        File file = new File(BODY_FILE_DIR + "/" + testId);
+        FileUtil.deleteContents(file);
+        if (file.exists()) {
+            file.delete();
+        }
     }
 
     public String run(SaveAPITestRequest request) {
@@ -145,6 +222,8 @@ public class APITestService {
             MSException.throwException(Translator.get("file_cannot_be_null"));
         }
         byte[] bytes = fileService.loadFileAsBytes(file.getFileId());
+        // 解析 xml 处理 mock 数据
+        bytes = JmeterDocumentParser.parse(bytes);
         InputStream is = new ByteArrayInputStream(bytes);
 
         APITestResult apiTest = get(request.getId());
@@ -152,9 +231,12 @@ public class APITestService {
             apiTest.setUserId(request.getUserId());
         }
         String reportId = apiReportService.create(apiTest, request.getTriggerMode());
+        /*if (request.getTriggerMode().equals("SCHEDULE")) {
+            List<Notice> notice = noticeService.queryNotice(request.getId());
+            mailService.sendHtml(reportId,notice,"api");
+        }*/
         changeStatus(request.getId(), APITestStatus.Running);
-
-        jMeterService.run(request.getId(), null, is);
+        jMeterService.runOld(request.getId(), null, is);
         return reportId;
     }
 
@@ -168,6 +250,14 @@ public class APITestService {
     private void checkNameExist(SaveAPITestRequest request) {
         ApiTestExample example = new ApiTestExample();
         example.createCriteria().andNameEqualTo(request.getName()).andProjectIdEqualTo(request.getProjectId()).andIdNotEqualTo(request.getId());
+        if (apiTestMapper.countByExample(example) > 0) {
+            MSException.throwException(Translator.get("load_test_already_exists"));
+        }
+    }
+
+    public void checkName(SaveAPITestRequest request) {
+        ApiTestExample example = new ApiTestExample();
+        example.createCriteria().andNameEqualTo(request.getName()).andProjectIdEqualTo(request.getProjectId());
         if (apiTestMapper.countByExample(example) > 0) {
             MSException.throwException(Translator.get("load_test_already_exists"));
         }
@@ -201,10 +291,10 @@ public class APITestService {
         return test;
     }
 
-    private void saveFile(String testId, MultipartFile file) {
-        final FileMetadata fileMetadata = fileService.saveFile(file);
+    private void saveFile(ApiTest apiTest, MultipartFile file) {
+        final FileMetadata fileMetadata = fileService.saveFile(file, apiTest.getProjectId());
         ApiTestFile apiTestFile = new ApiTestFile();
-        apiTestFile.setTestId(testId);
+        apiTestFile.setTestId(apiTest.getId());
         apiTestFile.setFileId(fileMetadata.getId());
         apiTestFileMapper.insert(apiTestFile);
     }
@@ -238,16 +328,18 @@ public class APITestService {
         addOrUpdateApiTestCronJob(request);
     }
 
-    public void createSchedule(Schedule request) {
+    public void createSchedule(ScheduleRequest request) {
         scheduleService.addSchedule(buildApiTestSchedule(request));
         addOrUpdateApiTestCronJob(request);
     }
 
-    private Schedule buildApiTestSchedule(Schedule request) {
+    private Schedule buildApiTestSchedule(ScheduleRequest request) {
         Schedule schedule = scheduleService.buildApiTestSchedule(request);
         schedule.setJob(ApiTestJob.class.getName());
         schedule.setGroup(ScheduleGroup.API_TEST.name());
         schedule.setType(ScheduleType.CRON.name());
+        schedule.setProjectId(request.getProjectId());
+        schedule.setName(request.getName());
         return schedule;
     }
 
@@ -317,7 +409,11 @@ public class APITestService {
                 .collect(Collectors.toList());
         if (!resourceIds.isEmpty()) {
             ApiTestExample example = new ApiTestExample();
-            example.createCriteria().andIdIn(resourceIds);
+            ApiTestExample.Criteria criteria = example.createCriteria();
+            criteria.andIdIn(resourceIds);
+            if (StringUtils.isNotBlank(request.getProjectId())) {
+                criteria.andProjectIdEqualTo(request.getProjectId());
+            }
             List<ApiTest> apiTests = apiTestMapper.selectByExample(example);
             Map<String, String> apiTestMap = apiTests.stream().collect(Collectors.toMap(ApiTest::getId, ApiTest::getName));
             scheduleService.build(apiTestMap, schedules);
@@ -325,12 +421,15 @@ public class APITestService {
         return schedules;
     }
 
-    public String runDebug(SaveAPITestRequest request, MultipartFile file) {
+    public String runDebug(SaveAPITestRequest request, MultipartFile file, List<MultipartFile> bodyFiles) {
         if (file == null) {
             throw new IllegalArgumentException(Translator.get("file_cannot_be_null"));
         }
         updateTest(request);
         APITestResult apiTest = get(request.getId());
+        List<String> bodyUploadIds = new ArrayList<>(request.getBodyUploadIds());
+        request.setBodyUploadIds(null);
+        createBodyFiles(apiTest, bodyUploadIds, bodyFiles);
         if (SessionUtils.getUser() == null) {
             apiTest.setUserId(request.getUserId());
         }
@@ -338,12 +437,243 @@ public class APITestService {
 
         InputStream is = null;
         try {
-            is = new ByteArrayInputStream(file.getBytes());
+            byte[] bytes = file.getBytes();
+            // 解析 xml 处理 mock 数据
+            bytes = JmeterDocumentParser.parse(bytes);
+            is = new ByteArrayInputStream(bytes);
         } catch (IOException e) {
-            LogUtil.error(e);
+            LogUtil.error(e.getMessage(), e);
         }
 
-        jMeterService.run(request.getId(), reportId, is);
+        jMeterService.runOld(request.getId(), reportId, is);
         return reportId;
+    }
+
+    private void checkQuota() {
+        QuotaService quotaService = CommonBeanFactory.getBean(QuotaService.class);
+        if (quotaService != null) {
+            quotaService.checkAPITestQuota();
+        }
+    }
+
+    public void mergeCreate(SaveAPITestRequest request, MultipartFile file, List<String> selectIds) {
+        ApiTest test = createTest(request, file);
+        selectIds.forEach(sourceId -> {
+            copyBodyFiles(test.getId(), sourceId);
+        });
+    }
+
+    /**
+     * 更新jmx数据，处理jmx里的各种参数
+     * <p>
+     *
+     * @param jmxString      原JMX文件
+     * @param testNameParam  某些节点要替换的testName
+     * @param isFromScenario 是否来源于场景 （来源于场景的话，testName要进行处理）
+     * @return
+     * @author song tianyang
+     */
+    public JmxInfoDTO updateJmxString(String jmxString, String testNameParam, boolean isFromScenario) {
+        String attribute_testName = "testname";
+        String[] requestElementNameArr = new String[]{"HTTPSamplerProxy", "TCPSampler", "JDBCSampler", "DubboSample"};
+
+        List<String> attachmentFilePathList = new ArrayList<>();
+
+        try {
+            //将ThreadGroup的testname改为接口名称
+            Document doc = DocumentHelper.parseText(jmxString);// 获取可续保保单列表报文模板
+            Element root = doc.getRootElement();
+            Element rootHashTreeElement = root.element("hashTree");
+
+            List<Element> innerHashTreeElementList = rootHashTreeElement.elements("hashTree");
+            for (Element innerHashTreeElement : innerHashTreeElementList) {
+                //转换DubboDefaultConfigGui
+                List<Element> configTestElementList = innerHashTreeElement.elements("ConfigTestElement");
+                for (Element configTestElement : configTestElementList) {
+                    this.updateDubboDefaultConfigGuiElement(configTestElement);
+                }
+
+                List<Element> theadGroupElementList = innerHashTreeElement.elements("ThreadGroup");
+                for (Element theadGroupElement : theadGroupElementList) {
+                    if (StringUtils.isNotEmpty(testNameParam)) {
+                        theadGroupElement.attribute(attribute_testName).setText(testNameParam);
+                    }
+                }
+                List<Element> thirdHashTreeElementList = innerHashTreeElement.elements("hashTree");
+                for (Element element : thirdHashTreeElementList) {
+                    String testName = testNameParam;
+
+                    //更新请求类节点的部份属性
+                    this.updateRequestElementInfo(element, testNameParam, requestElementNameArr, isFromScenario);
+                    //检查有无jmeter不是别的自定义参数
+                    this.checkPrivateFunctionNode(element);
+
+                    //转换DubboDefaultConfigGui
+                    List<Element> hashTreeConfigTestElementList = element.elements("ConfigTestElement");
+                    for (Element configTestElement : hashTreeConfigTestElementList) {
+                        this.updateDubboDefaultConfigGuiElement(configTestElement);
+                    }
+
+                    //HTTPSamplerProxy， 进行附件转化： 1.elementProp里去掉路径； 2。elementProp->filePath获取路径并读出来
+                    attachmentFilePathList.addAll(this.parseAttachmentFileInfo(element));
+                }
+            }
+            jmxString = root.asXML();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (!jmxString.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")) {
+            jmxString = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + jmxString;
+        }
+
+        //处理附件
+        Map<String, String> attachmentFiles = new HashMap<>();
+
+        List<FileMetadata> fileMetadataList = new ArrayList<>();
+        for (String filePath: attachmentFilePathList) {
+            File file  = new File(filePath);
+            if(file.exists() && file.isFile()){
+                try{
+                    FileMetadata fileMetadata = fileService.saveFile(file,FileUtil.readAsByteArray(file));
+                    fileMetadataList.add(fileMetadata);
+                    attachmentFiles.put(fileMetadata.getId(),fileMetadata.getName());
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        JmxInfoDTO returnDTO = new JmxInfoDTO("Demo.jmx",jmxString,attachmentFiles);
+        returnDTO.setFileMetadataList(fileMetadataList);
+        return returnDTO;
+    }
+
+    private List<String> parseAttachmentFileInfo(Element parentHashTreeElement) {
+        List<String> attachmentFilePathList = new ArrayList<>();
+        List<Element> parentElementList = parentHashTreeElement.elements();
+        for (Element parentElement: parentElementList) {
+            String qname = parentElement.getQName().getName();
+            if (StringUtils.equals(qname, "CSVDataSet")) {
+                try {
+                    List<Element> propElementList = parentElement.elements();
+                    for (Element propElement : propElementList) {
+                        if (StringUtils.equals("filename", propElement.attributeValue("name"))) {
+                            String filePath = propElement.getText();
+                            File file = new File(filePath);
+                            if (file.exists() && file.isFile()) {
+                                attachmentFilePathList.add(filePath);
+                                String fileName = file.getName();
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                }
+            } else if (StringUtils.equals(qname, "HTTPSamplerProxy")) {
+                List<Element> elementPropElementList = parentElement.elements("elementProp");
+                for (Element element : elementPropElementList) {
+                    if (StringUtils.equals(element.attributeValue("name"), "HTTPsampler.Files")) {
+                        String name = element.getName();
+                        List<Element> collectionPropList = element.elements("collectionProp");
+                        for (Element prop : collectionPropList) {
+                            List<Element> elementProps = prop.elements();
+                            for (Element elementProp : elementProps) {
+                                if (StringUtils.equals(elementProp.attributeValue("elementType"), "HTTPFileArg")) {
+                                    try {
+                                        String filePath = elementProp.attributeValue("name");
+                                        File file = new File(filePath);
+                                        if(file.exists() && file.isFile()){
+                                            attachmentFilePathList.add(filePath);
+                                            String fileName = file.getName();
+                                            elementProp.attribute("name").setText(fileName);
+                                        }
+                                    }catch (Exception e){
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return attachmentFilePathList;
+    }
+
+    private void updateDubboDefaultConfigGuiElement(Element configTestElement) {
+        String dubboDefaultConfigGuiClassName = "io.github.ningyu.jmeter.plugin.dubbo.gui.DubboDefaultConfigGui";
+        if (configTestElement == null) {
+            return;
+        }
+        String guiClassValue = configTestElement.attributeValue("guiclass");
+        if (StringUtils.equals(guiClassValue, "DubboDefaultConfigGui")) {
+            configTestElement.attribute("guiclass").setText(dubboDefaultConfigGuiClassName);
+        }
+    }
+
+    private void checkPrivateFunctionNode(Element element) {
+        List<Element> scriptHashTreeElementList = element.elements("hashTree");
+        for (Element scriptHashTreeElement : scriptHashTreeElementList) {
+            boolean isRemove = false;
+            List<Element> removeElement = new ArrayList<>();
+            List<Element> scriptElementItemList = scriptHashTreeElement.elements();
+            for (Element hashTreeItemElement : scriptElementItemList) {
+                String className = hashTreeItemElement.attributeValue("testclass");
+                String qname = hashTreeItemElement.getQName().getName();
+
+                if (isRemove) {
+                    if (org.apache.commons.lang3.StringUtils.equals("hashTree", qname)) {
+                        removeElement.add(hashTreeItemElement);
+                    }
+                }
+
+                isRemove = false;
+                if (org.apache.commons.lang3.StringUtils.equals(className, "JSR223PostProcessor")) {
+                    List<Element> scriptElements = hashTreeItemElement.elements("stringProp");
+                    for (Element scriptElement : scriptElements) {
+                        String scriptName = scriptElement.attributeValue("name");
+                        String contentValue = scriptElement.getStringValue();
+
+                        if ("script".equals(scriptName) && contentValue.startsWith("io.metersphere.api.jmeter.JMeterVars.addVars")) {
+                            isRemove = true;
+                            removeElement.add(hashTreeItemElement);
+                        }
+                    }
+                }
+            }
+            for (Element itemElement : removeElement) {
+                scriptHashTreeElement.remove(itemElement);
+            }
+        }
+    }
+
+    private void updateRequestElementInfo(Element element, String testNameParam, String[] requestElementNameArr, boolean isFromScenario) {
+        String attribute_testName = "testname";
+        String scenarioCaseNameSplit = "<->";
+        String testName = testNameParam;
+
+        for (String requestElementName : requestElementNameArr) {
+            List<Element> sampleProxyElementList = element.elements(requestElementName);
+            for (Element itemElement : sampleProxyElementList) {
+                if (isFromScenario) {
+                    testName = itemElement.attributeValue(attribute_testName);
+                    if (StringUtils.isNotBlank(testName)) {
+                        String[] testNameArr = testName.split(scenarioCaseNameSplit);
+                        if (testNameArr.length > 0) {
+                            testName = testNameArr[0];
+                        }
+                    }
+                }
+                itemElement.attribute(attribute_testName).setText(testName);
+
+                //double的话有额外处理方式
+                if (StringUtils.equals(requestElementName, "DubboSample")) {
+                    //dubbo节点要更新 标签、guiClass 和 testClass
+                    itemElement.setName("io.github.ningyu.jmeter.plugin.dubbo.sample.DubboSample");
+                    itemElement.attribute("testclass").setText("io.github.ningyu.jmeter.plugin.dubbo.sample.DubboSample");
+                    itemElement.attribute("guiclass").setText("io.github.ningyu.jmeter.plugin.dubbo.gui.DubboSampleGui");
+                }
+
+            }
+        }
     }
 }

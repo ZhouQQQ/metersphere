@@ -7,7 +7,7 @@
     :destroy-on-close="true"
     show-close
     @closed="handleClose">
-    <el-form :model="ruleForm" label-position="right" label-width="120px" size="small" :rules="rule">
+    <el-form :model="ruleForm" label-position="right" label-width="100px" size="small" :rules="rule">
       <el-form-item :label="$t('test_track.case.test_name')" prop="testName">
         <el-input v-model="ruleForm.testName" autocomplete="off" clearable show-word-limit></el-input>
       </el-form-item>
@@ -22,11 +22,12 @@
 
 <script>
   import MsDialogFooter from '../../common/components/MsDialogFooter'
-  import {Test} from "./model/ScenarioModel";
+  import {Test} from "./model/ScenarioModel"
   import MsApiScenarioConfig from "./components/ApiScenarioConfig";
   import MsApiReportStatus from "../report/ApiReportStatus";
   import MsApiReportDialog from "./ApiReportDialog";
-  import {removeGoBackListener} from "../../../../common/js/utils";
+  import {getUUID} from "@/common/js/utils";
+  import {parseEnvironment} from "./model/EnvironmentModel";
 
 
   export default {
@@ -40,6 +41,8 @@
         test: null,
         tests: [],
         ruleForm: {},
+        change: false,
+        projectId: "",
         rule: {
           testName: [
             {required: true, message: this.$t('api_test.input_name'), trigger: 'blur'},
@@ -47,14 +50,23 @@
         }
       };
     },
+    watch: {
+
+      test: {
+        handler: function () {
+          this.change = true;
+        },
+        deep: true
+      }
+    },
     props: {
       selectIds: {
         type: Set
       },
-      selectNames: {
+      selectProjectNames: {
         type: Set
       },
-      selectProjectNames: {
+      selectProjectId: {
         type: Set
       }
     },
@@ -63,17 +75,56 @@
         this.oneClickOperationVisible = true;
       },
       checkedSaveAndRunTest() {
-        if (this.selectNames.has(this.testName)) {
-          this.$warning(this.$t('load_test.already_exists'));
-        } else {
+        if (this.ruleForm.testName) {
           if (this.selectProjectNames.size > 1) {
             this.$warning(this.$t('load_test.same_project_test'));
+            this.oneClickOperationVisible = false;
+            this.$emit('refresh')
           } else {
-            for (let x of this.selectIds) {
-              this.getTest(x)
-            }
+            this.checkNameResult(this.ruleForm.testName)
           }
+        } else {
+          this.$warning(this.$t('api_test.input_name'))
         }
+      },
+      checkNameResult() {
+        this.checkName(() => {
+          for (let x of this.selectIds) {
+            this.getTest(x)
+          }
+        })
+      },
+      checkName(callback) {
+        for (let i of this.selectProjectId) {
+          this.result = this.$post('/api/checkName', {name: this.ruleForm.testName, projectId: i}, () => {
+            if (callback) callback();
+          })
+        }
+      },
+      _getEnvironmentAndRunTest: function (item) {
+        this.result = this.$get('/api/environment/list/' + item.projectId, response => {
+          let environments = response.data;
+          let environmentMap = new Map();
+          environments.forEach(environment => {
+            parseEnvironment(environment);
+            environmentMap.set(environment.id, environment);
+          });
+          this.test.scenarioDefinition.forEach(scenario => {
+              if (scenario.environmentId) {
+                let env = environmentMap.get(scenario.environmentId);
+                if (!env) {
+                  scenario.environmentId = undefined;
+                } else {
+                  scenario.environment = env;
+                }
+              }
+            }
+          )
+          this.tests = [];
+          this.saveRunTest();
+          this.oneClickOperationVisible = false;
+          this.$emit('refresh')
+        });
       },
       getTest(id) {
         this.result = this.$get("/api/get/" + id, response => {
@@ -89,28 +140,24 @@
             this.test = this.test || test;
             if (this.tests.length > 1) {
               this.test.scenarioDefinition = this.test.scenarioDefinition.concat(test.scenarioDefinition);
-
             }
             if (this.tests.length === this.selectIds.size) {
-              this.tests = [];
-              this.saveRunTest();
-              this.oneClickOperationVisible = false;
-
-
+              this._getEnvironmentAndRunTest(item);
             }
           }
         });
       },
       saveRunTest() {
+        this.change = false;
         this.save(() => {
           this.$success(this.$t('commons.save_success'));
           this.runTest();
         })
       },
       save(callback) {
-        let url = "/api/create";
-        this.result = this.$request(this.getOptions(url), () => {
-          this.create = false;
+        this.change = false;
+        let url = "/api/create/merge";
+        this.result = this.$request(this.getOptions(url, this.selectIds), () => {
           if (callback) callback();
         });
       },
@@ -120,14 +167,20 @@
           this.$router.push({
             path: '/api/report/view/' + response.data
           })
+          this.test = ""
         });
       },
-      getOptions(url) {
+      getOptions(url, selectIds) {
+
         let formData = new FormData();
-        let requestJson = JSON.stringify(this.test);
-        formData.append('request', new Blob([requestJson], {
+        formData.append('request', new Blob([JSON.stringify(this.test)], {
           type: "application/json"
         }));
+
+        formData.append('selectIds', new Blob([JSON.stringify(Array.from(selectIds))], {
+          type: "application/json"
+        }));
+
         let jmx = this.test.toJMX();
         let blob = new Blob([jmx.xml], {type: "application/octet-stream"});
         formData.append("file", new File([blob], jmx.name));

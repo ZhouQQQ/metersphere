@@ -66,13 +66,18 @@
             this.charData.push(data);
           });
           this.reload();
+
+
         },
         reload() {
           this.isShow = false;
           this.$nextTick(function () {
             this.isShow = true;
           })
-        }
+        },
+        onClick(params){
+          this.$emit('onClick', params)
+        },
       }
     }
 </script>

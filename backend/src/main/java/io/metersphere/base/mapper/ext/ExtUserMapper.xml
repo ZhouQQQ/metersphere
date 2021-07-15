@@ -16,6 +16,27 @@
         <result column="phone" jdbcType="VARCHAR" property="phone"/>
     </resultMap>
 
+    <sql id="queryWhereCondition">
+        <where>
+            <if test="request.id != null">
+                AND user.id like CONCAT('%', #{request.id},'%')
+            </if>
+            <if test="request.name != null">
+                AND user.name like CONCAT('%', #{request.name},'%')
+            </if>
+            <if test="request.email != null">
+                AND user.email like CONCAT('%', #{request.email},'%')
+            </if>
+
+            <if test="request.unSelectIds != null and request.unSelectIds.size() > 0">
+                AND user.id not in
+                <foreach collection="request.unSelectIds" item="itemId" separator="," open="(" close=")">
+                    #{itemId}
+                </foreach>
+            </if>
+        </where>
+    </sql>
+
     <select id="getUserList" resultMap="BaseResultMap">
         select u.id, u.name, u.email, u.phone, u.language, u.status, u.source,
         u.last_organization_id, u.last_workspace_id, u.language, u.create_time, u.update_time
@@ -32,6 +53,17 @@
             </if>
         </where>
         order by u.update_time desc
+    </select>
+    <select id="queryTypeByIds" parameterType="java.lang.String" resultType="io.metersphere.notice.domain.UserDetail">
+        SELECT
+        email,phone
+        from user
+        WHERE id IN
+        <foreach collection="list" item="id" index="index"
+                 open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+
     </select>
 
     <!--修改密码-->
@@ -51,4 +83,38 @@
         select id, name, email, last_organization_id, last_workspace_id from `user` where id like CONCAT('%', #{condition},'%') or email like CONCAT('%', #{condition},'%') limit 100;
     </select>
 
+    <select id="queryNameByIds" resultType="io.metersphere.base.domain.User">
+        select id, name
+        from `user`
+        WHERE id IN
+        <foreach collection="list" item="id" index="index"
+                 open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="queryName" resultType="io.metersphere.base.domain.User">
+        select id, name
+        from `user`
+    </select>
+
+    <select id="selectAllId" resultType="java.lang.String">
+        select id from `user`
+    </select>
+
+    <select id="selectIdsByQuery" resultType="java.lang.String">
+        select user.id
+        from user
+        <include refid="queryWhereCondition"/>
+    </select>
+
+    <update id="updateLastProjectIdIfNull">
+        update user set last_project_id = #{projectId} where id = #{userId}
+        and (last_project_id is null or last_project_id = '')
+    </update>
+
+    <update id="updateLastWorkspaceIdIfNull">
+        update user set last_workspace_id = #{workspaceId} where id = #{userId}
+        and (last_workspace_id is null or last_workspace_id = '')
+    </update>
 </mapper>

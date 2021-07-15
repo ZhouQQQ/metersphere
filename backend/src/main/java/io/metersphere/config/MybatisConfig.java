@@ -2,11 +2,13 @@ package io.metersphere.config;
 
 import com.github.pagehelper.PageInterceptor;
 import io.metersphere.base.domain.ApiTestReportDetail;
+import io.metersphere.base.domain.AuthSource;
 import io.metersphere.base.domain.FileContent;
 import io.metersphere.base.domain.TestResource;
 import io.metersphere.commons.utils.CompressUtils;
 import io.metersphere.commons.utils.MybatisInterceptorConfig;
 import io.metersphere.interceptor.MybatisInterceptor;
+import io.metersphere.interceptor.UserDesensitizationInterceptor;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -18,7 +20,7 @@ import java.util.List;
 import java.util.Properties;
 
 @Configuration
-@MapperScan(basePackages = "io.metersphere.base.mapper", sqlSessionFactoryRef = "sqlSessionFactory")
+@MapperScan(basePackages = {"io.metersphere.base.mapper", "io.metersphere.xpack.mapper"}, sqlSessionFactoryRef = "sqlSessionFactory")
 @EnableTransactionManagement
 public class MybatisConfig {
 
@@ -44,7 +46,13 @@ public class MybatisConfig {
         configList.add(new MybatisInterceptorConfig(FileContent.class, "file", CompressUtils.class, "zip", "unzip"));
         configList.add(new MybatisInterceptorConfig(ApiTestReportDetail.class, "content", CompressUtils.class, "compress", "decompress"));
         configList.add(new MybatisInterceptorConfig(TestResource.class, "configuration"));
+        configList.add(new MybatisInterceptorConfig(AuthSource.class, "configuration"));
         interceptor.setInterceptorConfigList(configList);
         return interceptor;
+    }
+
+    @Bean
+    public UserDesensitizationInterceptor userDesensitizationInterceptor() {
+        return new UserDesensitizationInterceptor();
     }
 }

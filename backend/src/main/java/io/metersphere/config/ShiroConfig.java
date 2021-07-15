@@ -1,17 +1,22 @@
 package io.metersphere.config;
 
+import io.metersphere.commons.utils.ShiroUtils;
 import io.metersphere.security.ApiKeyFilter;
-import io.metersphere.security.LoginFilter;
-import io.metersphere.security.ShiroDBRealm;
+import io.metersphere.security.CsrfFilter;
+import io.metersphere.security.UserModularRealmAuthenticator;
+import io.metersphere.security.realm.LdapRealm;
+import io.metersphere.security.realm.LocalRealm;
+import org.apache.shiro.authc.pam.FirstSuccessfulStrategy;
+import org.apache.shiro.authc.pam.ModularRealmAuthenticator;
 import org.apache.shiro.cache.MemoryConstrainedCacheManager;
+import org.apache.shiro.realm.Realm;
 import org.apache.shiro.session.mgt.SessionManager;
 import org.apache.shiro.spring.LifecycleBeanPostProcessor;
 import org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor;
 import org.apache.shiro.spring.web.ShiroFilterFactoryBean;
 import org.apache.shiro.web.mgt.DefaultWebSecurityManager;
-import org.apache.shiro.web.servlet.SimpleCookie;
-import org.apache.shiro.web.session.mgt.DefaultWebSessionManager;
 import org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.EnvironmentAware;
@@ -24,45 +29,30 @@ import org.springframework.core.env.Environment;
 
 import javax.servlet.DispatcherType;
 import javax.servlet.Filter;
-import java.util.EnumSet;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Configuration
+@ConditionalOnProperty(prefix = "sso", name = "mode", havingValue = "local", matchIfMissing = true)
 public class ShiroConfig implements EnvironmentAware {
     private Environment env;
 
     @Bean
     public ShiroFilterFactoryBean getShiroFilterFactoryBean(DefaultWebSecurityManager sessionManager) {
         ShiroFilterFactoryBean shiroFilterFactoryBean = new ShiroFilterFactoryBean();
-        shiroFilterFactoryBean.getFilters().put("authc", new LoginFilter());
         shiroFilterFactoryBean.setLoginUrl("/login");
         shiroFilterFactoryBean.setSecurityManager(sessionManager);
         shiroFilterFactoryBean.setUnauthorizedUrl("/403");
         shiroFilterFactoryBean.setSuccessUrl("/");
 
         shiroFilterFactoryBean.getFilters().put("apikey", new ApiKeyFilter());
-
+        shiroFilterFactoryBean.getFilters().put("csrf", new CsrfFilter());
         Map<String, String> filterChainDefinitionMap = shiroFilterFactoryBean.getFilterChainDefinitionMap();
-        filterChainDefinitionMap.put("/resource/**", "anon");
-        filterChainDefinitionMap.put("/", "anon");
-        filterChainDefinitionMap.put("/signin", "anon");
-        filterChainDefinitionMap.put("/ldap/signin", "anon");
-        filterChainDefinitionMap.put("/ldap/open", "anon");
-        filterChainDefinitionMap.put("/isLogin", "anon");
-        filterChainDefinitionMap.put("/css/**", "anon");
-        filterChainDefinitionMap.put("/js/**", "anon");
-        filterChainDefinitionMap.put("/img/**", "anon");
-        filterChainDefinitionMap.put("/fonts/**", "anon");
 
-        // for swagger
-        filterChainDefinitionMap.put("/swagger-ui.html", "anon");
-        filterChainDefinitionMap.put("/swagger-ui/**", "anon");
-        filterChainDefinitionMap.put("/v3/api-docs/**", "anon");
+        ShiroUtils.loadBaseFilterChain(filterChainDefinitionMap);
 
-        filterChainDefinitionMap.put("/403", "anon");
-        filterChainDefinitionMap.put("/anonymous/**", "anon");
-        filterChainDefinitionMap.put("/**", "apikey, authc");
+        ShiroUtils.ignoreCsrfFilter(filterChainDefinitionMap);
+
+        filterChainDefinitionMap.put("/**", "apikey, csrf, authc");
         return shiroFilterFactoryBean;
     }
 
@@ -80,7 +70,7 @@ public class ShiroConfig implements EnvironmentAware {
     }
 
     /**
-     * securityManager 不用直接注入shiroDBRealm，可能会导致事务失效
+     * securityManager 不用直接注入 Realm，可能会导致事务失效
      * 解决方法见 handleContextRefresh
      * http://www.debugrun.com/a/NKS9EJQ.html
      */
@@ -89,13 +79,20 @@ public class ShiroConfig implements EnvironmentAware {
         DefaultWebSecurityManager dwsm = new DefaultWebSecurityManager();
         dwsm.setSessionManager(sessionManager);
         dwsm.setCacheManager(memoryConstrainedCacheManager);
+        dwsm.setAuthenticator(modularRealmAuthenticator());
         return dwsm;
     }
 
-    @Bean(name = "shiroDBRealm")
+    @Bean
     @DependsOn("lifecycleBeanPostProcessor")
-    public ShiroDBRealm getShiroDBRealm() {
-        return new ShiroDBRealm();
+    public LocalRealm localRealm() {
+        return new LocalRealm();
+    }
+
+    @Bean
+    @DependsOn("lifecycleBeanPostProcessor")
+    public LdapRealm ldapRealm() {
+        return new LdapRealm();
     }
 
     @Bean(name = "lifecycleBeanPostProcessor")
@@ -104,6 +101,7 @@ public class ShiroConfig implements EnvironmentAware {
     }
 
     @Bean
+    @DependsOn({"lifecycleBeanPostProcessor"})
     public DefaultAdvisorAutoProxyCreator getDefaultAdvisorAutoProxyCreator() {
         DefaultAdvisorAutoProxyCreator daap = new DefaultAdvisorAutoProxyCreator();
         daap.setProxyTargetClass(true);
@@ -111,27 +109,24 @@ public class ShiroConfig implements EnvironmentAware {
     }
 
     @Bean
+    public ModularRealmAuthenticator modularRealmAuthenticator() {
+        //自己重写的ModularRealmAuthenticator
+        UserModularRealmAuthenticator modularRealmAuthenticator = new UserModularRealmAuthenticator();
+        modularRealmAuthenticator.setAuthenticationStrategy(new FirstSuccessfulStrategy());
+        return modularRealmAuthenticator;
+    }
+
+    @Bean
     public AuthorizationAttributeSourceAdvisor getAuthorizationAttributeSourceAdvisor(DefaultWebSecurityManager sessionManager) {
         AuthorizationAttributeSourceAdvisor aasa = new AuthorizationAttributeSourceAdvisor();
         aasa.setSecurityManager(sessionManager);
-        return new AuthorizationAttributeSourceAdvisor();
+        return aasa;
     }
 
     @Bean
     public SessionManager sessionManager(MemoryConstrainedCacheManager memoryConstrainedCacheManager) {
-        Long sessionTimeout = env.getProperty("session.timeout", Long.class, 1800L); // 默认1800s, 半个小时
-
-        DefaultWebSessionManager sessionManager = new DefaultWebSessionManager();
-        sessionManager.setSessionIdUrlRewritingEnabled(false);
-        sessionManager.setGlobalSessionTimeout(sessionTimeout * 1000);// 超时时间ms
-        sessionManager.setDeleteInvalidSessions(true);
-        sessionManager.setSessionValidationSchedulerEnabled(true);
-        SimpleCookie sessionIdCookie = new SimpleCookie();
-        sessionManager.setSessionIdCookie(sessionIdCookie);
-        sessionIdCookie.setPath("/");
-        sessionIdCookie.setName("MS_SESSION_ID");
-        sessionManager.setCacheManager(memoryConstrainedCacheManager);
-        return sessionManager;
+        Long sessionTimeout = env.getProperty("session.timeout", Long.class, 43200L); // 默认43200s, 12个小时
+        return ShiroUtils.getSessionManager(sessionTimeout, memoryConstrainedCacheManager);
     }
 
     /**
@@ -140,8 +135,13 @@ public class ShiroConfig implements EnvironmentAware {
     @EventListener
     public void handleContextRefresh(ContextRefreshedEvent event) {
         ApplicationContext context = event.getApplicationContext();
-        ShiroDBRealm shiroDBRealm = (ShiroDBRealm) context.getBean("shiroDBRealm");
-        ((DefaultWebSecurityManager) context.getBean("securityManager")).setRealm(shiroDBRealm);
+        List<Realm> realmList = new ArrayList<>();
+        LocalRealm localRealm = context.getBean(LocalRealm.class);
+        LdapRealm ldapRealm = context.getBean(LdapRealm.class);
+        // 基本realm
+        realmList.add(localRealm);
+        realmList.add(ldapRealm);
+        context.getBean(DefaultWebSecurityManager.class).setRealms(realmList);
     }
 
     @Override

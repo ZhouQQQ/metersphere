@@ -8,5 +8,7 @@ import java.util.List;
 public class Assertions {
     private List<AssertionRegex> regex;
     private List<AssertionJsonPath> jsonPath;
+    private List<AssertionJSR223> jsr223;
+    private List<AssertionXPath2> xpath2;
     private AssertionDuration duration;
 }

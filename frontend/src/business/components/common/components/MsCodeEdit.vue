@@ -1,8 +1,11 @@
 <template>
-  <editor v-model="formatData" :lang="mode" @init="editorInit" theme="chrome"/>
+    <editor v-model="formatData" :lang="mode" @init="editorInit" :theme="theme" :height="height"/>
 </template>
 
 <script>
+  import {formatHtml, formatJson, formatXml} from "../../../../common/js/format-utils";
+  import toDiffableHtml from 'diffable-html';
+
     export default {
       name: "MsCodeEdit",
       components: { editor: require('vue2-ace-editor')},
@@ -12,11 +15,24 @@
         }
       },
       props: {
+        height: [String, Number],
         data: {
           type: String
         },
+        theme: {
+          type: String,
+          default() {
+            return 'chrome'
+          }
+        },
         init: {
           type: Function
+        },
+        enableFormat: {
+          type: Boolean,
+          default() {
+            return true;
+          }
         },
         readOnly: {
           type: Boolean,
@@ -38,6 +54,9 @@
         }
       },
       mounted() {
+        if (!this.data) {
+          this.formatData = "";
+        }
         this.format();
       },
       watch: {
@@ -54,7 +73,7 @@
           this.modes.forEach(mode => {
             require('brace/mode/' + mode); //language
           });
-          require('brace/theme/chrome')
+          require('brace/theme/' + this.theme)
           require('brace/snippets/javascript') //snippet
           if (this.readOnly) {
             editor.setReadOnly(true);
@@ -64,18 +83,24 @@
           }
         },
         format() {
-          if (this.mode === 'json') {
-            try {
-              this.formatData = JSON.stringify(JSON.parse(this.data), null, '\t');
-            } catch (e) {
-              if (this.data) {
-                this.formatData = this.data;
+          if (this.enableFormat) {
+            if (this.data) {
+              switch (this.mode) {
+                case 'json':
+                  this.formatData = formatJson(this.data);
+                  break;
+                case 'html':
+                  this.formatData = toDiffableHtml(this.data);
+                  break;
+                case 'xml':
+                  this.formatData = formatXml(this.data);
+                  break;
+                default:
+                  this.formatData = this.data;
               }
             }
           } else {
-            if (this.data) {
-              this.formatData = this.data;
-            }
+            this.formatData = this.data;
           }
         }
       }

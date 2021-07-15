@@ -79,8 +79,8 @@ function checkField(secondsField, minimal, maximal) {
     try {
       var startVal = parseInt(startValue, 10);
       var endVal = parseInt(endValue, 10);
-
-      return endVal > startVal;
+      //return endVal > startVal;
+      return true;
     } catch (e) {
       return false;
     }
@@ -312,25 +312,11 @@ function checkListField(value, minimal, maximal ) {
     values[j] = st[j];
   }
 
-  var previousValue = -1;
-
   for (var i= 0; i < values.length; i++) {
     var currentValue = values[i];
 
     if (!checkIntValue(currentValue, minimal, maximal, true)) {
       return false;
-    }
-
-    try {
-      var val = parseInt(currentValue, 10);
-
-      if (val <= previousValue) {
-        return false;
-      } else {
-        previousValue = val;
-      }
-    } catch (e) {
-      // we have always an int
     }
   }
 

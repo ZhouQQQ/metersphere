@@ -54,7 +54,7 @@
   import TemplateComponentBar from "./TemplateComponentBar";
   import TemplateComponentEditHeader from "./TemplateComponentEditHeader";
   import {WORKSPACE_ID} from '../../../../../../../common/js/constants';
-  import {jsonToMap, mapToJson} from "../../../../../../../common/js/utils";
+  import {getCurrentWorkspaceId, jsonToMap, mapToJson} from "../../../../../../../common/js/utils";
   import TemplateComponent from "./TemplateComponent/TemplateComponent";
 
     export default {
@@ -77,10 +77,11 @@
               [2, { name: this.$t('test_track.plan_view.test_result'), id: 2 , type: 'system'}],
               [3, { name: this.$t('test_track.plan_view.result_distribution'), id: 3 ,type: 'system'}],
               [4, { name: this.$t('test_track.plan_view.failure_case'), id: 4 ,type: 'system'}],
-              [5, { name: this.$t('test_track.plan_view.custom_component'), id: 5 ,type: 'custom'}]
+              [5, { name: this.$t('test_track.plan_view.defect_list'), id: 5 ,type: 'system'}],
+              [6, { name: this.$t('test_track.plan_view.custom_component'), id:6,type: 'custom'}]
             ]
           ),
-          components: [5],
+          components: [6],
           previews: [],
           template: {},
           isReport: false
@@ -109,12 +110,12 @@
           this.template = {
             name: '',
             content: {
-              components: [1,2,3,4,5],
+              components: [1,2,3,4,5,6],
               customComponent: new Map()
             }
           };
           this.previews = [];
-          this.components = [5];
+          this.components = [6];
           if (id) {
             this.type = 'edit';
             this.getTemplateById(id);
@@ -126,7 +127,7 @@
           this.listenGoBack();
         },
         initComponents() {
-          this.componentMap.forEach((value, key) =>{
+          this.componentMap.forEach((value, key) => {
             if (this.template.content.components.indexOf(key) < 0 && this.components.indexOf(key) < 0) {
               this.components.push(key);
             }
@@ -144,6 +145,7 @@
               }
             }
           });
+
         },
         handleClose() {
           window.removeEventListener('popstate', this.goBack, false);
@@ -203,7 +205,7 @@
           if (this.isReport) {
             url = '/case/report/get/';
           }
-          this.$get(url + id, (response) =>{
+          this.$get(url + id, (response) => {
             this.template = response.data;
             this.template.content = JSON.parse(response.data.content);
             if (this.template.content.customComponent) {
@@ -236,7 +238,7 @@
           if (this.isReport) {
             url = '/case/report/';
           }
-          this.$post(url + this.type, param, () =>{
+          this.$post(url + this.type, param, () => {
             this.$success(this.$t('commons.save_success'));
             this.handleClose();
             this.$emit('refresh');
@@ -260,10 +262,10 @@
           if (this.type == 'edit') {
             param.id = this.template.id;
           } else {
-            param.workspaceId = localStorage.getItem(WORKSPACE_ID);
+            param.workspaceId = getCurrentWorkspaceId();
           }
           if (this.template.workspaceId) {
-            param.workspaceId = localStorage.getItem(WORKSPACE_ID);
+            param.workspaceId = getCurrentWorkspaceId();
           }
           if (this.metric && this.metric.startTime) {
             param.startTime = this.metric.startTime.getTime();

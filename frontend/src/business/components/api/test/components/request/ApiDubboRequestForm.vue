@@ -11,7 +11,7 @@
       </el-select>
     </el-form-item>
 
-    <el-button class="debug-button" size="small" type="primary" @click="runDebug">{{$t('load_test.save_and_run')}}</el-button>
+    <el-button :disabled="!request.enable || !scenario.enable || isReadOnly" class="debug-button" size="small" type="primary" @click="runDebug">{{$t('api_test.request.debug')}}</el-button>
 
     <el-tabs v-model="activeName">
       <el-tab-pane label="Interface" name="interface">
@@ -44,25 +44,33 @@
       <el-tab-pane :label="$t('api_test.request.extract.label')" name="extract">
         <ms-api-extract :is-read-only="isReadOnly" :extract="request.extract"/>
       </el-tab-pane>
+      <el-tab-pane :label="$t('api_test.request.processor.pre_exec_script')" name="beanShellPreProcessor">
+        <ms-jsr233-processor :is-read-only="isReadOnly" :jsr223-processor="request.jsr223PreProcessor"/>
+      </el-tab-pane>
+      <el-tab-pane :label="$t('api_test.request.processor.post_exec_script')" name="beanShellPostProcessor">
+        <ms-jsr233-processor :is-read-only="isReadOnly" :jsr223-processor="request.jsr223PostProcessor"/>
+      </el-tab-pane>
     </el-tabs>
   </el-form>
 </template>
 
 <script>
   import MsApiKeyValue from "../ApiKeyValue";
-  import MsApiBody from "../ApiBody";
+  import MsApiBody from "../body/ApiBody";
   import MsApiAssertions from "../assertion/ApiAssertions";
-  import {DubboRequest} from "../../model/ScenarioModel";
+  import {DubboRequest, Scenario} from "../../model/ScenarioModel";
   import MsApiExtract from "../extract/ApiExtract";
   import ApiRequestMethodSelect from "../collapse/ApiRequestMethodSelect";
   import MsDubboInterface from "@/business/components/api/test/components/request/dubbo/Interface";
   import MsDubboRegistryCenter from "@/business/components/api/test/components/request/dubbo/RegistryCenter";
   import MsDubboConfigCenter from "@/business/components/api/test/components/request/dubbo/ConfigCenter";
   import MsDubboConsumerService from "@/business/components/api/test/components/request/dubbo/ConsumerAndService";
+  import MsJsr233Processor from "../processor/Jsr233Processor";
 
   export default {
     name: "MsApiDubboRequestForm",
     components: {
+      MsJsr233Processor,
       MsDubboConsumerService,
       MsDubboConfigCenter,
       MsDubboRegistryCenter,
@@ -70,6 +78,7 @@
     },
     props: {
       request: DubboRequest,
+      scenario: Scenario,
       isReadOnly: {
         type: Boolean,
         default: false
@@ -133,5 +142,7 @@
   .environment-url-tip {
     color: #F56C6C;
   }
+
+
 
 </style>

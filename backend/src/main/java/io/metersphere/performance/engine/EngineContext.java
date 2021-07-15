@@ -10,13 +10,11 @@ public class EngineContext {
     private String fileType;
     private String content;
     private String resourcePoolId;
-    private Long threadNum;
-    private Long startTime;
     private String reportId;
     private Integer resourceIndex;
+    private double[] ratios;
     private Map<String, Object> properties = new HashMap<>();
-    private Map<String, String> testData = new HashMap<>();
-    private Map<String, String> env = new HashMap<>();
+    private Map<String, byte[]> testResourceFiles = new HashMap<>();
 
     public String getTestId() {
         return testId;
@@ -50,14 +48,6 @@ public class EngineContext {
         this.properties.putAll(props);
     }
 
-    public Map<String, String> getEnv() {
-        return env;
-    }
-
-    public void setEnv(Map<String, String> env) {
-        this.env = env;
-    }
-
     public Object getProperty(String key) {
         return this.properties.get(key);
     }
@@ -78,36 +68,12 @@ public class EngineContext {
         this.fileType = fileType;
     }
 
-    public Map<String, String> getTestData() {
-        return testData;
-    }
-
-    public void setTestData(Map<String, String> testData) {
-        this.testData = testData;
-    }
-
     public String getResourcePoolId() {
         return resourcePoolId;
     }
 
     public void setResourcePoolId(String resourcePoolId) {
         this.resourcePoolId = resourcePoolId;
-    }
-
-    public Long getThreadNum() {
-        return threadNum;
-    }
-
-    public void setThreadNum(Long threadNum) {
-        this.threadNum = threadNum;
-    }
-
-    public Long getStartTime() {
-        return startTime;
-    }
-
-    public void setStartTime(Long startTime) {
-        this.startTime = startTime;
     }
 
     public String getReportId() {
@@ -125,5 +91,21 @@ public class EngineContext {
 
     public void setResourceIndex(Integer resourceIndex) {
         this.resourceIndex = resourceIndex;
+    }
+
+    public double[] getRatios() {
+        return ratios;
+    }
+
+    public void setRatios(double[] ratios) {
+        this.ratios = ratios;
+    }
+
+    public Map<String, byte[]> getTestResourceFiles() {
+        return testResourceFiles;
+    }
+
+    public void setTestResourceFiles(Map<String, byte[]> testResourceFiles) {
+        this.testResourceFiles = testResourceFiles;
     }
 }

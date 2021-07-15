@@ -6,15 +6,13 @@ import com.alibaba.excel.event.AnalysisEventListener;
 import com.alibaba.excel.exception.ExcelAnalysisException;
 import com.alibaba.excel.util.StringUtils;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.excel.annotation.NotRequired;
 import io.metersphere.excel.domain.ExcelErrData;
 import io.metersphere.excel.domain.TestCaseExcelData;
-import io.metersphere.excel.utils.EasyExcelI18nTranslator;
 import io.metersphere.excel.utils.ExcelValidateHelper;
 import io.metersphere.i18n.Translator;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.util.*;
 
 public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
@@ -23,8 +21,6 @@ public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
 
     protected List<T> list = new ArrayList<>();
 
-    protected EasyExcelI18nTranslator easyExcelI18nTranslator;
-
     protected List<TestCaseExcelData> excelDataList = new ArrayList<>();
 
     /**
@@ -32,17 +28,7 @@ public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
      */
     protected static final int BATCH_COUNT = 2000;
 
-    protected Class<T> clazz;
-
-    public EasyExcelListener() {
-        Type type = getClass().getGenericSuperclass();
-        this.clazz = (Class<T>) ((ParameterizedType) type).getActualTypeArguments()[0];
-        //防止多线程修改运行时类注解后，saveOriginalExcelProperty保存的是修改后的值
-        synchronized (EasyExcelI18nTranslator.class) {
-            this.easyExcelI18nTranslator = new EasyExcelI18nTranslator(this.clazz);
-            this.easyExcelI18nTranslator.translateExcelProperty();
-        }
-    }
+    protected Class clazz;
 
     /**
      * 每条数据解析都会调用
@@ -143,7 +129,10 @@ public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
                 for (String v : excelProperty.value()) {
                     value.append(v);
                 }
-                result.add(value.toString());
+                // 检查是否必有的头部信息
+                if (field.getAnnotation(NotRequired.class) == null) {
+                    result.add(value.toString());
+                }
             }
         }
         return result;
@@ -151,9 +140,5 @@ public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
 
     public List<ExcelErrData<T>> getErrList() {
         return errList;
-    }
-
-    public void close() {
-        this.easyExcelI18nTranslator.resetExcelProperty();
     }
 }

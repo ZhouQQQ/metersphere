@@ -10,7 +10,32 @@
                   AND w.name LIKE #{request.name,jdbcType=VARCHAR}
               </if>
           </where>
-          order by w.update_time desc
+        order by w.update_time desc
+    </select>
+
+    <select id="getWorkspaceIdsByOrgId" resultType="java.lang.String">
+        select id
+        from workspace
+        where organization_id = #{orgId}
+    </select>
+    <select id="getWorkspaceIdsOrgId" resultType="io.metersphere.dto.WorkspaceDTO">
+        select *
+        from workspace
+        where organization_id = #{orgId}
+    </select>
+
+    <select id="findIdAndNameByOrganizationId" resultType="io.metersphere.dto.WorkspaceDTO">
+        select id,name,organization_id AS organizationId from workspace
+        <where>
+            <if test="organizationId != 'All'">
+                AND organization_id = #{organizationId}
+            </if>
+        </where>
+    </select>
+
+    <select id="getOrganizationIdById" resultType="java.lang.String">
+        select organization_id from workspace
+        where id = #{orgId}
     </select>
 
 </mapper>

@@ -1,9 +1,10 @@
 package io.metersphere.base.domain;
 
-import java.io.Serializable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+
+import java.io.Serializable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -13,7 +14,9 @@ public class ApiTestEnvironmentWithBLOBs extends ApiTestEnvironment implements S
 
     private String headers;
 
-    private String customData;
+    private String config;
+
+    private String hosts;
 
     private static final long serialVersionUID = 1L;
 }

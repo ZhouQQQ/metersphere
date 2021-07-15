@@ -1,6 +1,6 @@
 <template>
-  <div v-loading="result.loading">
-    <el-dialog title="选择用例目录"
+  <div v-if="dialogVisible" class="batch-move" v-loading="result.loading">
+    <el-dialog :title="this.$t('test_track.case.select_catalog')"
                :visible.sync="dialogVisible"
                :before-close="close"
                :destroy-on-close="true"
@@ -15,6 +15,7 @@
           :filter-node-method="filterNode"
           :expand-on-click-node="false"
           highlight-current
+          style="overflow: auto"
           @node-click="nodeClick"
           ref="tree"
         >
@@ -25,15 +26,15 @@
             </span>
             <span class="node-title">{{node.label}}</span>
           </span>
-          </template>
-        </el-tree>
-      </div>
-      <template v-slot:footer>
-        <ms-dialog-footer
-          @cancel="close"
-          @confirm="save"/>
-      </template>
-    </el-dialog>
+        </template>
+      </el-tree>
+    </div>
+    <template v-slot:footer>
+      <ms-dialog-footer
+        @cancel="close"
+        @confirm="save"/>
+    </template>
+  </el-dialog>
   </div>
 </template>
 
@@ -76,17 +77,15 @@
         }
         let param = {};
         param.nodeId = this.currentKey;
-        this.moduleOptions.forEach(item => {
-          if (item.id === this.currentKey) {
-            param.nodePath = item.path;
-          }
-        });
+        if (this.moduleOptions) {
+          this.moduleOptions.forEach(item => {
+            if (item.id === this.currentKey) {
+              param.nodePath = item.path;
+            }
+          });
+        }
         param.ids = this.selectIds;
-        this.result = this.$post('/test/case/batch/edit', param, () => {
-          this.$success(this.$t('commons.save_success'));
-          this.close();
-          this.$emit('refresh');
-        });
+        this.$emit('moveSave', param);
       },
       refresh() {
         this.$emit("refresh");
@@ -115,6 +114,10 @@
     flex: 1 1 auto;
     padding: 0 5px;
     overflow: hidden;
+  }
+
+  .batch-move {
+    height: 500px;
   }
 
 </style>
